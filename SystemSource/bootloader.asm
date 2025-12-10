@@ -1,13 +1,35 @@
 bits 16
 org 0x7c00
+jmp 0:start
+
+diskNum db 0
+msg db "Bootloader trovato!!! Eseguendo il codice.....", 13, 10, 0
+msg2 db "Ampliando spazio di memoria dedicato al bootloader....", 13, 10, 0
+
+cfE db "cf = true, Lettura del Disco NON Riuscita Correttamente!!", 13, 10, 0
+cfC db "cf = false, Lettura Riuscita Correttamente!!", 13, 10, 0
+alT db "al e' corretto, sono stati letti tutti i settori", 13, 10, 0
+alF db "al NON e' corretto, uno o piu settori non sono stati letti: ", 13, 10, 0
+
+
+start:
+    cli
+    cld
+   
     
     ;variables initialization
+    
     xor ax, ax
     mov ds, ax
     mov es, ax      
     mov ss, ax
     mov sp, 0x7c00
     mov [diskNum],dl
+
+    sti
+    
+    mov ax, 0x0003    ; AH=00 (Set Video Mode), AL=03 (80x25 Text)
+    int 10h
 
     mov si, msg
     call printf
@@ -23,15 +45,17 @@ org 0x7c00
     mov ax, 0
     mov es , ax
     mov ah,2
-    mov al,1
+    mov al,3
     mov ch,0
     mov cl,2
     mov dh,0
     mov dl,[diskNum]
     mov bx, 0x7E00
-    int 13h
 
-    mov bl,1
+    mov bl,al
+    int 13h
+    
+    
     call check_disk_operation_success
 
     ;protected mode loader section
@@ -52,8 +76,9 @@ org 0x7c00
     ;start 32bit protected mode
     jmp CODE_SEG:protected_mode
 
-; QUA FINISCE IL CODICE DIRETTO DEL PRIMO SETTORE
-; ALLA LINEA 181 COTINUA
+; END FIRST SECTOR REAL CODE
+; CONTINUE ON LINE ∼200
+
 
 
 
@@ -62,13 +87,13 @@ org 0x7c00
 
 
 printf:
-   push ax
+    push ax
     push bx
     
 
     .printLoop:
     
-        
+        mov bh,0
         mov ah,14
         mov al,[si]
 
@@ -114,30 +139,23 @@ check_disk_operation_success:
 
         mov si, alF
         call printf
+
+
     .if2end:
 
 ret
 
 
 
-diskNum db 0
-msg db "Bootloader trovato!!! Eseguendo il codice.....", 13, 10, 0
-msg2 db "Ampliando spazio di memoria dedicato al bootloader....", 13, 10, 0
-
-cfE db "cf = true, Lettura del Disco NON Riuscita Correttamente!!", 13, 10, 0
-cfC db "cf = false, Lettura Riuscita Correttamente!!", 13, 10, 0
-alT db "al e' corretto, sono stati letti tutti i settori", 13, 10, 0
-alF db "al NON e' corretto, uno o piu settori non sono stati letti", 13, 10, 0
-
 TIMES 510 - ($ - $$) db 0	;Fill the rest of sector with 0
 DW 0xAA55	
 
 
 ;=========================================================================
-;||                           SECTOR 2                                  ||
+;||                           SECTOR 2-4                                ||
 ;=========================================================================
 
-msg3 db "Avviando modalita' protetta a 32 bit......", 13, 10, 0
+msg3 db "Loading Protected x32 Mode......", 13, 10, 0
 
 enable_A20:
     pusha
@@ -179,6 +197,12 @@ DATA_SEG equ data_descriptor - GDT_Start ; equ sets constants
 
 
 
+;=========================================================================
+;||                             32 BIT                                  ||
+;=========================================================================
+
+string db "PRINTF32LETSGOOOOO!!!!", 0
+
 
 bits 32
 protected_mode:
@@ -191,7 +215,7 @@ protected_mode:
     mov fs, ax
     mov gs, ax
     
-    mov esp, 0x00090000  ; Stack sicuro
+    mov esp, 0x00090000  ; Stack safe
     
     ; edi = display cursor
     ;mov byte [edi], 'A'      ; ASCII CHAR
@@ -201,19 +225,13 @@ protected_mode:
 
     mov dl,39
     mov dh,8
-    call loadAt
-    mov byte [edi], 'C'     
-    mov byte [edi+1], 0x0F     
-    mov byte [edi+2], 'I'
-    mov byte [edi+3], 0x0F
-    mov byte [edi+4], 'A'
-    mov byte [edi+5], 0x0F
-    mov byte [edi+6], 'O'
-    mov byte [edi+7], 0x0F
-
+    mov cl,0x0F
+    mov esi,string
+    call printf32
+   
 
  
-
+   
 
 
 
@@ -226,7 +244,7 @@ protected_mode:
     ;call load_Long_Mode
 JMP $
 
-loadAt: ;converte dl in colonna e dh in riga(l*h)
+loadAt: ;convert dl in column and dh in row(l*h)
     push ebx
     push eax
     push ecx
@@ -246,6 +264,34 @@ loadAt: ;converte dl in colonna e dh in riga(l*h)
 ret
 
 
+printf32:
+   push eax
+    push ebx
+    
+    call loadAt
+    .printLoop:
+    
+        mov ah,14
+        mov al,[esi]
+
+        cmp al,0
+        je .finished
+
+        mov byte [edi], al 
+        mov byte [edi+1], cl
+
+        inc esi
+        add edi,2
+
+    jmp .printLoop
+    .finished:
+    
+   
+    pop ebx
+    pop eax
+ret
+
+
 load_Long_Mode:
 
     mov eax, cr0
@@ -257,6 +303,8 @@ load_Long_Mode:
 
 ret
 
-TIMES 1024 - ($ - $$) db 0
+
+
+TIMES 2048 - ($ - $$) db 0
 
 
