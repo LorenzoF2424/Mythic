@@ -1,24 +1,26 @@
-bits 16
 org 0x7c00
-jmp 0:start
+bits 16
 
-diskNum db 0
-msg db "Bootloader trovato!!! Eseguendo il codice.....", 13, 10, 0
-msg2 db "Ampliando spazio di memoria dedicato al bootloader....", 13, 10, 0
+jmp	0x0000:start
 
-cfE db "cf = true, Lettura del Disco NON Riuscita Correttamente!!", 13, 10, 0
-cfC db "cf = false, Lettura Riuscita Correttamente!!", 13, 10, 0
-alT db "al e' corretto, sono stati letti tutti i settori", 13, 10, 0
-alF db "al NON e' corretto, uno o piu settori non sono stati letti: ", 13, 10, 0
+    diskNum db 0
+    times 8-($-$$) db 0
+
+    ;	Boot Information Table
+    bi_PrimaryVolumeDescriptor  resd  1    ; LBA of the Primary Volume Descriptor
+    bi_BootFileLocation         resd  1    ; LBA of the Boot File
+    bi_BootFileLength           resd  1    ; Length of the boot file in bytes
+    bi_Checksum                 resd  1    ; 32 bit checksum
+    bi_Reserved                 resb  40   ; Reserved 'for future standardization'
+
+    ;KERNEL_ENTRY equ 0x8000
+
 
 
 start:
-    cli
-    cld
-   
     
     ;variables initialization
-    
+    xor bx, bx
     xor ax, ax
     mov ds, ax
     mov es, ax      
@@ -26,10 +28,9 @@ start:
     mov sp, 0x7c00
     mov [diskNum],dl
 
-    sti
+  
     
-    mov ax, 0x0003    ; AH=00 (Set Video Mode), AL=03 (80x25 Text)
-    int 10h
+
 
     mov si, msg
     call printf
@@ -39,24 +40,30 @@ start:
     mov si, msg2
     call printf
 
-
-
-
     mov ax, 0
     mov es , ax
-    mov ah,2
+    mov ah,41h
+    
     mov al,3
+    mov bh,0
+    mov bl,al
+    push bx
     mov ch,0
     mov cl,2
     mov dh,0
     mov dl,[diskNum]
     mov bx, 0x7E00
+  
+  
 
-    mov bl,al
     int 13h
+    pop bx
     
     
     call check_disk_operation_success
+
+
+
 
     ;protected mode loader section
     mov si, msg3
@@ -92,18 +99,17 @@ printf:
     
 
     .printLoop:
-    
+        
+        lodsb
+
+        or al,al
+        jz .finished
         mov bh,0
         mov ah,14
-        mov al,[si]
-
-        cmp al,0
-        je .finished
-
         int 10h
 
 
-        inc si
+       
 
     jmp .printLoop
     .finished:
@@ -146,6 +152,11 @@ check_disk_operation_success:
 ret
 
 
+msg db "Bootloader found!!! Executing the code.....", 13, 10, 0
+msg2 db "Loading other sectors for more memory....", 13, 10, 0
+cfE db "cf = true, Disk Read FAILURE!!", 13, 10, 0
+alF db "al INCORRECT, one or more sectors didn't get read!!", 13, 10, 0
+
 
 TIMES 510 - ($ - $$) db 0	;Fill the rest of sector with 0
 DW 0xAA55	
@@ -154,7 +165,8 @@ DW 0xAA55
 ;=========================================================================
 ;||                           SECTOR 2-4                                ||
 ;=========================================================================
-
+cfC db "cf = false, Disk Read Success!!", 13, 10, 0
+alT db "al Correct, every sector got read into memory....", 13, 10, 0
 msg3 db "Loading Protected x32 Mode......", 13, 10, 0
 
 enable_A20:
@@ -201,8 +213,7 @@ DATA_SEG equ data_descriptor - GDT_Start ; equ sets constants
 ;||                             32 BIT                                  ||
 ;=========================================================================
 
-string db "PRINTF32LETSGOOOOO!!!!", 0
-
+string: db "string where i want", 0
 
 bits 32
 protected_mode:
@@ -223,26 +234,34 @@ protected_mode:
 
 
 
-    mov dl,39
+    mov dl,75
     mov dh,8
     mov cl,0x0F
     mov esi,string
     call printf32
-   
 
- 
-   
-
-
+    mov dl,40
+    mov dh,20
+    call loadAt
 
 
 
-
-
-
-
+    ;jmp KERNEL_ENTRY
     ;call load_Long_Mode
 JMP $
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 loadAt: ;convert dl in column and dh in row(l*h)
     push ebx
@@ -253,8 +272,7 @@ loadAt: ;convert dl in column and dh in row(l*h)
     mov eax,80
     mul dh
     add al, dl
-    mov cl,2
-    mul cx
+    SHL eax,1
     add ebx,eax
     mov edi,ebx
 
@@ -271,16 +289,14 @@ printf32:
     call loadAt
     .printLoop:
     
-        mov ah,14
-        mov al,[esi]
+        lodsb
+        or al,al
+        jz .finished
 
-        cmp al,0
-        je .finished
-
+        
         mov byte [edi], al 
         mov byte [edi+1], cl
 
-        inc esi
         add edi,2
 
     jmp .printLoop
@@ -292,7 +308,7 @@ printf32:
 ret
 
 
-load_Long_Mode:
+switch_long_mode:
 
     mov eax, cr0
     and eax,0x7FFFFFFF
@@ -300,7 +316,16 @@ load_Long_Mode:
     mov eax, cr4
     or eax,0x620
     mov cr4,eax
-
+    mov eax, dword[ebp+0x4]
+    mov cr3, eax
+    mov ecx, 0xC0000080
+    rdmsr
+    or eax,0x101
+    wrmsr
+    mov eax,cr0
+    or eax,0xE00000E
+    mov cr0,eax
+    ;jmp 0x08:long_mode
 ret
 
 
