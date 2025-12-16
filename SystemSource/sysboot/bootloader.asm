@@ -68,7 +68,7 @@ start:
     mov es , ax
     mov ah,2
     
-    mov al,14
+    mov al,12
     mov bh,0
     mov bl,al
     push bx

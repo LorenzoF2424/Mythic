@@ -27,7 +27,7 @@ nasm -f elf32 $SOURCE/sysboot/kernel_entry.asm -o $DEST/sysboot/kernel_entry.img
 }
 
 echo "Kernel Entry Assembly Successfull!!!"
-
+nasm -f bin $SOURCE/sysboot/zeroes.asm -o $TEMP/zeroes.bin
 
 
 #truncate -s 2048 bootloader.img
@@ -47,7 +47,8 @@ nasm "$SOURCE/sysboot/kernel_entry.asm" -f elf -o "$TEMP/kernel_entry.o"
 nasm "$SOURCE/sysboot/test_kernel.asm" -f bin -o "$TEMP/test_kernel.bin"
 x86_64-elf-g++ -ffreestanding -m32 -g -c "$SOURCE/syskernel/kernel.cpp" -o "$TEMP/kernel.o" -O2 -Wall -Wextra -fno-exceptions -fno-rtti
 x86_64-elf-ld -m elf_i386 -T linker.ld --oformat binary -o "$TEMP/kernel32.bin" "$TEMP/kernel_entry.o" "$TEMP/kernel.o"
-cat $DEST/sysboot/bootloader.img $TEMP/kernel32.bin > $TEMP/os-image.bin
+cat $DEST/sysboot/bootloader.img $TEMP/kernel32.bin > $TEMP/os-image_no_zeroes.bin
+cat $TEMP/os-image_no_zeroes.bin $TEMP/zeroes.bin > $TEMP/os-image.bin
 echo ""
 
 echo Bootloader + kernel_entry + kernel C++ file SIZE:
