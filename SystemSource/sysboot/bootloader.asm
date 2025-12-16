@@ -4,6 +4,7 @@ bits 16
 jmp	0x0000:start
 
     diskNum db 0
+    kernel_entry equ 0x1000
     times 8-($-$$) db 0
 
     ;	Boot Information Table
@@ -13,8 +14,7 @@ jmp	0x0000:start
     bi_Checksum                 resd  1    ; 32 bit checksum
     bi_Reserved                 resb  40   ; Reserved 'for future standardization'
 
-    ;KERNEL_ENTRY equ 0x8000
-
+    
 
 
 start:
@@ -40,28 +40,7 @@ start:
     mov si, msg2
     call printf
 
-    mov ax, 0
-    mov es , ax
-    mov ah,41h
-    
-    mov al,3
-    mov bh,0
-    mov bl,al
-    push bx
-    mov ch,0
-    mov cl,2
-    mov dh,0
-    mov dl,[diskNum]
-    mov bx, 0x7E00
-  
-  
-
-    int 13h
-    pop bx
-    
-    
-    call check_disk_operation_success
-
+ 
 
 
 
@@ -212,10 +191,10 @@ DATA_SEG equ data_descriptor - GDT_Start ; equ sets constants
 ;=========================================================================
 ;||                             32 BIT                                  ||
 ;=========================================================================
-
+bits 32
 string: db "string where i want", 0
 
-bits 32
+
 protected_mode:
 
 
@@ -245,9 +224,12 @@ protected_mode:
     call loadAt
 
 
+    mov eax, kernel_entry
+    mov ds, ax
+    mov es, ax
+    ;jmp 0x0000:KERNEL_ENTRY  ; Salta al kernel
 
-    ;jmp KERNEL_ENTRY
-    ;call load_Long_Mode
+  ;call load_Long_Mode
 JMP $
 
 
