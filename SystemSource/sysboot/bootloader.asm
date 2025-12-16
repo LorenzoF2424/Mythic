@@ -4,6 +4,7 @@ bits 16
 jmp	0x0000:start
 
     diskNum db 0
+    kernel_entry equ 0x1000
     times 8-($-$$) db 0
 
     ;	Boot Information Table
@@ -13,8 +14,7 @@ jmp	0x0000:start
     bi_Checksum                 resd  1    ; 32 bit checksum
     bi_Reserved                 resb  40   ; Reserved 'for future standardization'
 
-    ;KERNEL_ENTRY equ 0x8000
-
+    
 
 
 start:
@@ -29,7 +29,7 @@ start:
     mov [diskNum],dl
 
   
-    
+  
 
 
     mov si, msg
@@ -40,9 +40,10 @@ start:
     mov si, msg2
     call printf
 
+ 
     mov ax, 0
     mov es , ax
-    mov ah,41h
+    mov ah,2
     
     mov al,3
     mov bh,0
@@ -63,7 +64,29 @@ start:
     call check_disk_operation_success
 
 
+    mov ax, 0
+    mov es , ax
+    mov ah,2
+    
+    mov al,12
+    mov bh,0
+    mov bl,al
+    push bx
+    mov ch,0
+    mov cl,5
+    mov dh,0
+    mov dl,[diskNum]
+    mov bx, 0x1000
+  
+  
 
+    int 13h
+    pop bx
+    
+    
+    call check_disk_operation_success
+
+    
 
     ;protected mode loader section
     mov si, msg3
@@ -212,10 +235,10 @@ DATA_SEG equ data_descriptor - GDT_Start ; equ sets constants
 ;=========================================================================
 ;||                             32 BIT                                  ||
 ;=========================================================================
-
+bits 32
 string: db "string where i want", 0
 
-bits 32
+
 protected_mode:
 
 
@@ -225,8 +248,9 @@ protected_mode:
     mov es, ax
     mov fs, ax
     mov gs, ax
-    
-    mov esp, 0x00090000  ; Stack safe
+    mov ss, ax
+    mov ebp, 0x90000
+    mov esp, ebp  ; Stack safe
     
     ; edi = display cursor
     ;mov byte [edi], 'A'      ; ASCII CHAR
@@ -244,10 +268,13 @@ protected_mode:
     mov dh,20
     call loadAt
 
-
-
-    ;jmp KERNEL_ENTRY
-    ;call load_Long_Mode
+    
+ 
+    .delay:
+    ;jmp .delay
+    jmp kernel_entry ; Salta al kernel
+  
+  ;call load_Long_Mode
 JMP $
 
 

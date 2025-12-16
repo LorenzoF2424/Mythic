@@ -1,11 +1,27 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "displayVGA.h"
 
-extern "C" void main() {
-    *(char*)0xb8000 = 'A';
-    *(char*)0xb8001 = 0x0F;
-    *(char*)0xb8002 = 'C';
-    *(char*)0xb8003 = 0x0F;
-    return;
+extern "C" void main() { // KERNELLLLLLLLLLLLLLLLLLLLLLL
+
+    cls();
+    char *s="BENVENUTO NEL KERNEL FUNZIONA PORCO DIO VALERIO SUCCHIAMELO!!!";
+    char *s2="che bello usare c++";
+    /*for (int i=0;i<80*25*2;i=i+2) {
+        *(char*)(0xb8000+(i))= 0;
+        *(char*)(0xb8000+(i+1))= 0x0F;
+
+    }*/
+    int color=15;
+    for (int i=0;i<16;i++)    {
+        printfVGA32(s,cursorAt(0,i),color);
+        color--;
+    }
+
+    printfVGA32(s2,cursorAt(0,24),VGA_COLOR_BLUE);
+
+
+    while (1) {
+    }
 }

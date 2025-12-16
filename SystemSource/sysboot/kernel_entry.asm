@@ -1,7 +1,7 @@
 bits 32
-global _start
 extern main
+;mov byte [edi], 'K'
 
+     call main
 
-call main
-jmp $
+ jmp $
