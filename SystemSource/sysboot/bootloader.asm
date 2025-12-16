@@ -29,7 +29,7 @@ start:
     mov [diskNum],dl
 
   
-    
+  
 
 
     mov si, msg
@@ -41,8 +41,52 @@ start:
     call printf
 
  
+    mov ax, 0
+    mov es , ax
+    mov ah,2
+    
+    mov al,3
+    mov bh,0
+    mov bl,al
+    push bx
+    mov ch,0
+    mov cl,2
+    mov dh,0
+    mov dl,[diskNum]
+    mov bx, 0x7E00
+  
+  
+
+    int 13h
+    pop bx
+    
+    
+    call check_disk_operation_success
 
 
+    mov ax, 0
+    mov es , ax
+    mov ah,2
+    
+    mov al,14
+    mov bh,0
+    mov bl,al
+    push bx
+    mov ch,0
+    mov cl,5
+    mov dh,0
+    mov dl,[diskNum]
+    mov bx, 0x1000
+  
+  
+
+    int 13h
+    pop bx
+    
+    
+    call check_disk_operation_success
+
+    
 
     ;protected mode loader section
     mov si, msg3
@@ -204,8 +248,9 @@ protected_mode:
     mov es, ax
     mov fs, ax
     mov gs, ax
-    
-    mov esp, 0x00090000  ; Stack safe
+    mov ss, ax
+    mov ebp, 0x90000
+    mov esp, ebp  ; Stack safe
     
     ; edi = display cursor
     ;mov byte [edi], 'A'      ; ASCII CHAR
@@ -223,12 +268,12 @@ protected_mode:
     mov dh,20
     call loadAt
 
-
-    mov eax, kernel_entry
-    mov ds, ax
-    mov es, ax
-    ;jmp 0x0000:KERNEL_ENTRY  ; Salta al kernel
-
+    
+ 
+    .delay:
+    ;jmp .delay
+    jmp kernel_entry ; Salta al kernel
+  
   ;call load_Long_Mode
 JMP $
 
