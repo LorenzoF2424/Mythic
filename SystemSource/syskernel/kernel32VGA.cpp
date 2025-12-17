@@ -13,8 +13,8 @@ extern "C" void main() { // KERNELLLLLLLLLLLLLLLLLLLLLLL
 
     }*/
     int color=15;
-    for (int i=0;i<16;i++)    {
-        printfVGA32((char*)s,cursorAt(0,i),14);
+    for (int i=0;i<16;i++)  {
+        printfVGA32((char*)s,cursorAt(0,i),color);
         color--;
     }
 
