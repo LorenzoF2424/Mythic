@@ -66,9 +66,9 @@ void cls() {
 
 
 
-void printfVGA32(char *str, uintptr_t location, uint8_t color) {
+void printfVGA32(const char *str, uintptr_t location, uint8_t color) {
 
-    for (int i=0;i<strlen(str);i++){
+    for (uint32_t i=0;i<strlen(str);i++){
         putcVGA(str[i],location+(i*2),color);
     
    }

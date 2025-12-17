@@ -8,11 +8,11 @@ jmp	0x0000:start
     times 8-($-$$) db 0
 
     ;	Boot Information Table
-    bi_PrimaryVolumeDescriptor  resd  1    ; LBA of the Primary Volume Descriptor
-    bi_BootFileLocation         resd  1    ; LBA of the Boot File
-    bi_BootFileLength           resd  1    ; Length of the boot file in bytes
-    bi_Checksum                 resd  1    ; 32 bit checksum
-    bi_Reserved                 resb  40   ; Reserved 'for future standardization'
+    bi_PrimaryVolumeDescriptor  dd  0           ; LBA of the Primary Volume Descriptor
+    bi_BootFileLocation         dd  0           ; LBA of the Boot File
+    bi_BootFileLength           dd  0           ; Length of the boot file in bytes
+    bi_Checksum                 dd  0           ; 32 bit checksum
+    bi_Reserved                 times 40 db 0   ; Reserved 'for future standardization'
 
     
 
@@ -270,8 +270,6 @@ protected_mode:
 
     
  
-    .delay:
-    ;jmp .delay
     jmp kernel_entry ; Salta al kernel
   
   ;call load_Long_Mode
