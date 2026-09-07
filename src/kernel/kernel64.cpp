@@ -64,7 +64,7 @@ void init_all() {
 
     init_memory();
 
-
+    // a
     info_bar_window = terminal;
     info_bar_window.y_offset=0;
     draw_info_bar();
