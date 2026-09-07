@@ -59,11 +59,30 @@ void draw_char(char c, point p, terminal_color_t color) {
 }
 
 // ==========================================
-// RING BUFFER HELPER
-// Maps logical cursor row → physical buffer row using buf_start
+// RING BUFFER HELPERS
+// Only indicization/state logic: no access to the framebuffer.
 // ==========================================
+
+// map a logical row (relative to the cursor) to the buffer physical row.
 static inline uint32_t buf_row(const terminal_output_t* t, uint32_t logical_y) {
     return (t->buf_start + logical_y) % MAX_BUFFER_ROWS;
+}
+
+// Map a onscreen row to physical one, even taking into account
+// the "camera" scroll(view_offset) used to watch the history.
+static inline uint32_t view_row(const terminal_output_t* t, uint32_t screen_y, uint16_t view_offset) {
+    return (t->buf_start + screen_y + MAX_BUFFER_ROWS - view_offset) % MAX_BUFFER_ROWS;
+}
+
+// move the ring buffer forward by one row (creates the empty row at the bottom).
+static inline void ring_advance(terminal_output_t* t) {
+    t->buf_start = (t->buf_start + 1) % MAX_BUFFER_ROWS;
+}
+
+// empty the physical row of the logic buffer. No drawing on screen.
+static inline void clear_row(uint32_t physical_row, terminal_color_t color) {
+    for (uint32_t x = 0; x < MAX_BUFFER_COLUMNS; x++)
+        terminal_text_buffer[physical_row][x] = (TerminalChar){' ', color, false};
 }
 
 // ==========================================
@@ -103,7 +122,7 @@ void terminal_output_t::clear() {
     cursor      = point(0, 0);
     buf_start   = 0;
     input.start = point(0, 0);
-    
+
     // Reset global scroll variables on clear
     view_offset   = 0;
     history_lines = 0;
@@ -115,85 +134,57 @@ void terminal_output_t::redraw_all() {
     erase_mouse();
 
     for (uint32_t screen_y = 0; screen_y < (uint32_t)max.y; screen_y++) {
-        
-        // CAMERA LOGIC: Calculate physical row by moving back 'view_offset'.
-        // Add MAX_BUFFER_ROWS before modulo to avoid negative numbers in C++.
-        uint32_t buffer_y = (buf_start + screen_y + MAX_BUFFER_ROWS - view_offset) % MAX_BUFFER_ROWS;
-        
-        for (uint32_t x = 0; x < (uint32_t)max.x; x++) {
-            
-            // Early Return (Break): Prevent reading outside logical bounds
-            if (x >= MAX_BUFFER_COLUMNS) break;
-            
-            // Fetch the character and its specific saved color from RAM
-            TerminalChar t = terminal_text_buffer[buffer_y][x];
-            
-            // Ensure null terminators are drawn as spaces to clean the background
-            char display_char = (t.c == '\0') ? ' ' : t.c;
+        uint32_t buffer_y = view_row(this, screen_y, view_offset);   // LOGICA
 
-            // THE FIX: Use 't.color' instead of 'terminal.color' to respect the theme!
-            draw_char(display_char, point((int32_t)x, (int32_t)(screen_y + y_offset)), t.color);
+        for (uint32_t x = 0; x < (uint32_t)max.x; x++) {
+            if (x >= MAX_BUFFER_COLUMNS) break;
+            TerminalChar t = terminal_text_buffer[buffer_y][x];
+            char display_char = (t.c == '\0') ? ' ' : t.c;
+            draw_char(display_char, point((int32_t)x, (int32_t)(screen_y + y_offset)), t.color);  // STAMPA
         }
     }
 }
 
 void terminal_output_t::scroll() {
-    // 1. Update global history count
     uint32_t max_history_possible = MAX_BUFFER_ROWS - max.y;
-    if (history_lines < max_history_possible) {
-        history_lines++;
-    }
+    if (history_lines < max_history_possible) history_lines++;
 
-    // O(1) ring-buffer scroll: just advance buf_start by one row
-    // and clear the new last logical row — no data copying needed.
-    buf_start = (buf_start + 1) % MAX_BUFFER_ROWS;
+    // ring buffer
+    ring_advance(this);
+    clear_row(buf_row(this, max.y - 1), color);
 
-    // Clear the new last row (it will appear at the bottom of the screen)
-    uint32_t last = buf_row(this, max.y - 1);
-    for (uint32_t x = 0; x < MAX_BUFFER_COLUMNS; x++)
-        terminal_text_buffer[last][x] = (TerminalChar){' ', color, false};
-
+    // input logic
     if (input.start.y > 0) input.start.y--;
     else input.start = point(0, 0);
 }
 
 void terminal_output_t::visual_scroll() {
-
     erase_mouse();
-    // If the camera is shifted (user is looking at history), 
-    // we only update the logical ring buffer and exit. No physical drawing!
+
     if (view_offset > 0) {
         scroll();
-        return; 
+        return;
     }
 
-    // Move framebuffer pixels up by one character row using memmove (very fast).
-    // Then draw only the new bottom row — no full redraw needed.
-    uint32_t row_pixels = 16 * scale * pitch_pixels;   // pixels per text row
-    uint32_t offset     = y_offset * row_pixels;       // skip info bar rows
 
-    // Shift pixels up by one row
-    memmove(
-        framebuffer + offset,
-        framebuffer + offset + row_pixels,
-        (max.y - 1) * row_pixels * sizeof(uint32_t)
-    );
+    uint32_t row_pixels = 16 * scale * pitch_pixels;
+    uint32_t offset     = y_offset * row_pixels;
+    memmove(framebuffer + offset, framebuffer + offset + row_pixels,
+            (max.y - 1) * row_pixels * sizeof(uint32_t));
 
-    // Clear the new bottom row
     uint32_t last_row_start = offset + (max.y - 1) * row_pixels;
     for (uint32_t i = 0; i < row_pixels; i++)
         framebuffer[last_row_start + i] = color.bg;
 
-    // Advance the ring buffer and draw the new last row
+    //  move ring buffer forward
     scroll();
 
+    // print new row
     uint32_t last_buf = buf_row(this, max.y - 1);
     for (uint32_t x = 0; x < (uint32_t)max.x && x < MAX_BUFFER_COLUMNS; x++) {
-        draw_char(
-            terminal_text_buffer[last_buf][x].c,
-            point((int32_t)x, (int32_t)(max.y - 1 + y_offset)),
-            terminal_text_buffer[last_buf][x].color
-        );
+        draw_char(terminal_text_buffer[last_buf][x].c,
+                  point((int32_t)x, (int32_t)(max.y - 1 + y_offset)),
+                  terminal_text_buffer[last_buf][x].color);
     }
 }
 
@@ -241,10 +232,10 @@ void terminal_output_t::change_color(terminal_color_t new_c) {
     // Iterate through the entire logical text buffer in RAM
     for (uint32_t y = 0; y < MAX_BUFFER_ROWS; y++) {
         for (uint32_t x = 0; x < MAX_BUFFER_COLUMNS; x++) {
-            
+
             // Early return equivalent (continue) for locked characters (e.g., Kernel Panics)
             if (terminal_text_buffer[y][x].locked) continue;
-            
+
             // Dynamically re-evaluate the character's color based on the active theme
             if (theme_enabled) {
                 terminal_text_buffer[y][x].color = get_theme_color(terminal_text_buffer[y][x].c, new_c);
@@ -297,7 +288,7 @@ void terminal_output_t::putchar(char c) {
 
             // FIX: Ignore the global camera offset if drawing UI (direct mode)
             int32_t screen_y = cursor.y + (direct ? 0 : view_offset);
-            
+
             // Only draw the background rectangle if the line is currently visible
             if (screen_y >= 0 && screen_y < (int32_t)max.y) {
                 draw_rect(
@@ -324,13 +315,13 @@ void terminal_output_t::putchar(char c) {
 
        default: {
             // 1. Ensure the cursor is within physical buffer limits before starting
-            check_bounds(); 
+            check_bounds();
 
-            // Early Return 1: If cursor is completely out of logical bounds, 
+            // Early Return 1: If cursor is completely out of logical bounds,
             // advance the position for the next char and abort drawing
             if (cursor.x >= MAX_BUFFER_COLUMNS || cursor.y >= (int32_t)max.y) {
-                cursor.x++; 
-                check_bounds(); 
+                cursor.x++;
+                check_bounds();
                 return;
             }
 
@@ -347,21 +338,21 @@ void terminal_output_t::putchar(char c) {
 
             // 4. Calculate physical screen Y based on the global camera offset
             int32_t screen_y = cursor.y + (direct ? 0 : view_offset);
-            
-            // Early Return 2: If the character is logically saved but currently 
+
+            // Early Return 2: If the character is logically saved but currently
             // off-camera (scrolled away), advance the position and skip drawing
             if (screen_y < 0 || screen_y >= (int32_t)max.y) {
-                cursor.x++; 
-                check_bounds(); 
+                cursor.x++;
+                check_bounds();
                 return;
             }
 
             // 5. Draw the character to the visible framebuffer
             draw_char(c, point(cursor.x, screen_y + y_offset), char_color);
-            
+
             // 6. Advance the cursor for the next character
-            cursor.x++; 
-            check_bounds(); 
+            cursor.x++;
+            check_bounds();
             return;
         }
     }
@@ -433,7 +424,7 @@ char* getInput() {
 
     for (uint16_t i = 0; i < input.len; i++) {
         // Map logical row through ring buffer
-        uint32_t physical_y = (terminal.buf_start + current.y) % MAX_BUFFER_ROWS;
+        uint32_t physical_y = buf_row(&terminal, current.y);
         input.command[i]    = terminal_text_buffer[physical_y][current.x].c;
         current.x++;
 

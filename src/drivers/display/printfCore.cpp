@@ -291,33 +291,73 @@ void printf_core(void (*putc_cb)(char, void*), void* arg,
                 break;
             }
 
-            // ── Long prefix (l, ll, lll, llll, lllll) ───────────────────────
+            // ── Long prefix (e.g., %ld, %lld, %l256d, %l1024x) ───────────────────────
             case 'l': {
-                int l_count = 0;
-                while (format[i] == 'l') { l_count++; i++; }
-                if (format[i] == '\0') return;
+                bool handled_fastpath = false;
 
-                switch (l_count) {
-                    case 1: {
-                        // %ld / %lx — 64-bit
+                // 1. Fast-path checks using switch
+                switch (format[i + 1]) {
+                    // Standard %ld or %lx (64-bit)
+                    case 'd':
+                    case 'x': {
+                        i++; // Move directly to 'd' or 'x'
                         uint64_t num = va_arg(args, uint64_t);
-                        if (format[i] == 'x') {
-                            putc_cb('0', arg); putc_cb('x', arg);
-                            core_print_number(putc_cb, arg, num, 16, false, padding, pad_char);
-                        } else {
-                            core_print_number(putc_cb, arg, num, 10, true, padding, pad_char);
+
+                        switch (format[i]) {
+                            case 'x':
+                                putc_cb('0', arg);
+                                putc_cb('x', arg);
+                                core_print_number(putc_cb, arg, num, 16, false, padding, pad_char);
+                                break;
+                            case 'd':
+                            default:
+                                core_print_number(putc_cb, arg, num, 10, true, padding, pad_char);
+                                break;
                         }
+                        handled_fastpath = true;
                         break;
                     }
-                    // %lld  → uint128_t*
-                    // %llld → uint256_t*
-                    // ...   (caller passes &n)
-                    case 2: handle_int_printing<uint128_t> (putc_cb, arg, args, format[i], padding, pad_char); break;
-                    case 3: handle_int_printing<uint256_t> (putc_cb, arg, args, format[i], padding, pad_char); break;
-                    case 4: handle_int_printing<uint512_t> (putc_cb, arg, args, format[i], padding, pad_char); break;
-                    case 5: handle_int_printing<uint1024_t>(putc_cb, arg, args, format[i], padding, pad_char); break;
-                    default: putc_cb('?', arg); break;
+                    // Standard %lld or %llx (128-bit)
+                    case 'l': {
+                        switch (format[i + 2]) {
+                            case 'd':
+                            case 'x': {
+                                i += 2; // Move directly to 'd' or 'x'
+                                handle_int_printing<uint128_t>(putc_cb, arg, args, format[i], padding, pad_char);
+                                handled_fastpath = true;
+                                break;
+                            }
+                        }
+                        break; // End of 'l' check
+                    }
                 }
+
+                // If processed by fast-paths, early break out of the main case
+                if (handled_fastpath) {
+                    break;
+                }
+
+                // 3. Fallback: explicit bit-width parsing for 256+ (e.g., %l256d, %l1024x)
+                i++; // Skip the initial 'l'
+                int bit_width = 0;
+
+                while (format[i] >= '0' && format[i] <= '9') {
+                    bit_width = bit_width * 10 + (format[i] - '0');
+                    i++;
+                }
+
+                if (format[i] == '\0') {
+                    return; // Early return on unexpected end of string
+                }
+
+                // Handle explicitly parsed larger types (passed by pointer)
+                switch (bit_width) {
+                    case 256:  handle_int_printing<uint256_t> (putc_cb, arg, args, format[i], padding, pad_char); break;
+                    case 512:  handle_int_printing<uint512_t> (putc_cb, arg, args, format[i], padding, pad_char); break;
+                    case 1024: handle_int_printing<uint1024_t>(putc_cb, arg, args, format[i], padding, pad_char); break;
+                    default:   putc_cb('?', arg); break;
+                }
+
                 break;
             }
 

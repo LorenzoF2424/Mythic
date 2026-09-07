@@ -1,35 +1,38 @@
 #include "cli/cli.h"
+#include "drivers/display/kprintf.h"
+#include "lib/stdintex/uint512_t.h"
 uint8_t system_stack[65536];
 extern uint8_t initstack[];
 
 void init_all();
+void foo();
 void test();
 
-extern "C" void main() { 
+void main() {
 
     __asm__ __volatile__ ("mov %0, %%rsp" : : "r"(system_stack + 65536));
     init_all();
-    
-    
 
-  
-    vfs_print_prompt();
+
+
+
+    //vfs_print_prompt();
 
 
     //test();
     input.setStart();
 
-    
+
     //thread_create(info_bar_thread);
-    
+    //foo();
     while (true) {
 
 
         current_tick = ticks;
-        cli_main();    
+        cli_main();
         previous_tick = current_tick;
 
-        
+
 
 
 
@@ -45,7 +48,7 @@ void init_all() {
     klog("MythOS: Boot sequence initiated");
     init_display();
     terminal.init();
-    
+
     klog("Terminal initialized. Screen is active.");
 
     init_tss();
@@ -55,13 +58,13 @@ void init_all() {
 
     klog("CPU Exceptions are now catching errors.");
 
-    
+
     terminal.change_color(terminal_color(vga_palette[current_palette][0], vga_palette[current_palette][15]));
     terminal.write_welcome();
 
     init_memory();
 
-    
+
     info_bar_window = terminal;
     info_bar_window.y_offset=0;
     draw_info_bar();
@@ -76,13 +79,10 @@ void init_all() {
     asm volatile ("sti");
 
     init_scheduler();
-    
-    
-    // 2. VFS first (so it can accept mounts)
-    init_vfs(); 
 
-    // 3. Hardware / Storage (This is what triggers the mount)
-    // Make sure this line is still here!
+    // File System
+
+    init_vfs();
     mbr_read_partitions();
 
 
@@ -98,7 +98,7 @@ void init_all() {
 
 
 void test() {
-    
+
 mbr_read_partitions();
 
 // Test raw: read the file directly from hardware
@@ -110,4 +110,12 @@ fat32_read_file(3, 23, file_buffer);
 
 kprintf("File content: '%s'\n", (char*)file_buffer);
 
+}
+
+
+void foo() {
+
+    uint512_t hi = (uint512_t)"293439842738474748349373984936748961974914981649";
+
+    kprintf("%l512d\n",&hi);
 }
