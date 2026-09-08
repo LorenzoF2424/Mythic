@@ -8,7 +8,7 @@ void init_all();
 void foo();
 void test();
 
-void main() {
+extern "C" void main() {
 
     __asm__ __volatile__ ("mov %0, %%rsp" : : "r"(system_stack + 65536));
     init_all();
